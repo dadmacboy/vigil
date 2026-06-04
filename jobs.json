@@ -1,0 +1,26 @@
+[
+  {
+    "category": "Federal Jobs",
+    "title": "USAJOBS Okinawa — HR, Personnel, Admin, Analyst",
+    "summary": "Targeted Okinawa search aligned with personnel administration, HR, program analysis, readiness, and management experience.",
+    "url": "https://www.usajobs.gov/Search/Results?l=Okinawa%20Island%2C%20Japan&k=human%20resources%20OR%20administrative%20OR%20management%20analyst%20OR%20program%20analyst%20OR%20personnel&p=1",
+    "priority": "Review",
+    "matchScore": 90
+  },
+  {
+    "category": "MCCS / NAF",
+    "title": "MCCS Okinawa — Admin, HR, Training, Management",
+    "summary": "MCCS Okinawa NAF opportunities, including administrative, HR, training, and operations roles.",
+    "url": "https://careers.usmc-mccs.org/",
+    "priority": "Review",
+    "matchScore": 82
+  },
+  {
+    "category": "Kadena NAF",
+    "title": "Kadena FSS / NAF Jobs",
+    "summary": "Kadena NAF source for local Okinawa base support jobs and SOFA-compatible opportunities.",
+    "url": "https://kadenafss.com/naf-human-resources",
+    "priority": "Review",
+    "matchScore": 76
+  }
+]

@@ -1,0 +1,170 @@
+import fs from "fs/promises";
+
+function clean(text = "") {
+  return text
+    .replace(/<!\[CDATA\[/g, "")
+    .replace(/\]\]>/g, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .trim();
+}
+
+async function readRss(feed) {
+  try {
+    const res = await fetch(feed.url, { headers: { "user-agent": "Mozilla/5.0" } });
+    const xml = await res.text();
+    return [...xml.matchAll(/<item>[\s\S]*?<\/item>/g)].slice(0, feed.limit || 3).map(match => {
+      const item = match[0];
+      const title = clean(item.match(/<title>([\s\S]*?)<\/title>/)?.[1] || "Untitled");
+      const link = clean(item.match(/<link>([\s\S]*?)<\/link>/)?.[1] || feed.home || feed.url);
+      const pubDate = clean(item.match(/<pubDate>([\s\S]*?)<\/pubDate>/)?.[1] || new Date().toISOString());
+      return {
+        category: feed.category,
+        title,
+        summary: feed.summary(title),
+        url: link,
+        priority: "Monitor",
+        source: feed.name,
+        published: pubDate
+      };
+    });
+  } catch (error) {
+    return [{
+      category: feed.category,
+      title: `${feed.name} could not be read`,
+      summary: "Open the source manually if the feed fails.",
+      url: feed.home || feed.url,
+      priority: "Monitor",
+      source: feed.name
+    }];
+  }
+}
+
+function catholicSummary(title) {
+  const t = title.toLowerCase();
+  if (/pope|vatican|leo|francis|papa/.test(t)) return "Vatican or papal headline worth reviewing.";
+  if (/nigeria|africa|persecution|religious freedom|christian/.test(t)) return "Religious freedom or world Catholic headline worth reviewing.";
+  if (/spain|españa|europe|europa/.test(t)) return "Catholic or cultural development in Europe or Spain.";
+  return "Catholic headline worth reviewing.";
+}
+
+function googleNewsFeed(query, category) {
+  const encoded = encodeURIComponent(query);
+  return {
+    name: category,
+    category,
+    url: `https://news.google.com/rss/search?q=${encoded}&hl=en-US&gl=US&ceid=US:en`,
+    home: `https://news.google.com/search?q=${encoded}`,
+    limit: 3,
+    summary: () => `Public news search result for ${category}.`
+  };
+}
+
+async function updateNews() {
+  const feeds = [
+    {
+      name: "Vatican News",
+      category: "Catholic Watch",
+      url: "https://www.vaticannews.va/en.rss.xml",
+      home: "https://www.vaticannews.va/en.html",
+      limit: 3,
+      summary: catholicSummary
+    },
+    {
+      name: "Catholic News Agency",
+      category: "Catholic Watch",
+      url: "https://www.catholicnewsagency.com/rss/news.xml",
+      home: "https://www.catholicnewsagency.com/",
+      limit: 3,
+      summary: catholicSummary
+    },
+    googleNewsFeed("SANCORP ISN USMC Okinawa contract", "Contract Watch"),
+    googleNewsFeed("Okinawa US military base news", "Okinawa Watch"),
+    googleNewsFeed("Spain Hispanoamerica politics Catholic news", "Spain / Hispanoamérica")
+  ];
+  return (await Promise.all(feeds.map(readRss))).flat().slice(0, 15);
+}
+
+async function updateJobs() {
+  return [
+    {
+      category: "Federal Jobs",
+      title: "USAJOBS Okinawa — HR, Personnel, Admin, Analyst",
+      summary: "Review current USAJOBS Okinawa postings for HR, personnel, administrative, management analyst, program analyst, and related roles.",
+      url: "https://www.usajobs.gov/Search/Results?l=Okinawa%20Island%2C%20Japan&k=human%20resources%20OR%20administrative%20OR%20management%20analyst%20OR%20program%20analyst%20OR%20personnel&p=1",
+      priority: "Review",
+      matchScore: 90
+    },
+    {
+      category: "MCCS / NAF",
+      title: "MCCS Okinawa — Admin, HR, Training, Management",
+      summary: "Review MCCS Okinawa for administrative, HR, training, and operations roles.",
+      url: "https://careers.usmc-mccs.org/",
+      priority: "Review",
+      matchScore: 82
+    },
+    {
+      category: "Kadena NAF",
+      title: "Kadena FSS / NAF Jobs",
+      summary: "Review Kadena FSS NAF opportunities for SOFA-compatible base support jobs.",
+      url: "https://kadenafss.com/naf-human-resources",
+      priority: "Review",
+      matchScore: 76
+    },
+    {
+      category: "Contractor Jobs",
+      title: "Okinawa SOFA Contractor Jobs",
+      summary: "Search for contractor administrative, HR, program support, analyst, SharePoint, Power Platform, and base operations roles.",
+      url: "https://www.google.com/search?q=Okinawa+SOFA+contractor+administrative+HR+program+analyst+SharePoint+Power+Platform+jobs",
+      priority: "Review",
+      matchScore: 74
+    }
+  ];
+}
+
+async function updateSports() {
+  const out = [];
+  try {
+    const res = await fetch("https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard");
+    const data = await res.json();
+    for (const event of (data.events || []).slice(0, 5)) {
+      const comp = event.competitions?.[0];
+      const teams = comp?.competitors?.map(c => `${c.team?.displayName || "Team"}${c.score ? " " + c.score : ""}`).join(" vs ") || event.name;
+      out.push({
+        category: "Sports",
+        title: event.name || teams,
+        summary: `${event.status?.type?.description || "Scheduled"}: ${teams}.`,
+        url: event.links?.[0]?.href || "https://www.nba.com/games",
+        priority: "Optional",
+        source: "ESPN NBA"
+      });
+    }
+  } catch {
+    out.push({
+      category: "Sports",
+      title: "NBA Games and Scores",
+      summary: "NBA scoreboard could not be read; open NBA games manually.",
+      url: "https://www.nba.com/games",
+      priority: "Optional",
+      source: "NBA"
+    });
+  }
+  out.push({
+    category: "Sports",
+    title: "Japan B.LEAGUE Schedule",
+    summary: "Open the official Japan B.LEAGUE schedule.",
+    url: "https://www.bleague.jp/en/schedule/",
+    priority: "Optional",
+    source: "B.LEAGUE"
+  });
+  return out;
+}
+
+const [jobs, news, sports] = await Promise.all([updateJobs(), updateNews(), updateSports()]);
+
+await fs.writeFile("jobs.json", JSON.stringify(jobs, null, 2));
+await fs.writeFile("news.json", JSON.stringify(news, null, 2));
+await fs.writeFile("sports.json", JSON.stringify(sports, null, 2));
+await fs.writeFile("last-updated.json", JSON.stringify({ updated: new Date().toISOString(), mode: "github-actions" }, null, 2));

@@ -1,0 +1,145 @@
+const $ = (id) => document.getElementById(id);
+const state = { sections: [], index: 0, speaking: false, paused: false, voices: [], data: { jobs: [], news: [], sports: [] } };
+
+function setStatus(text){ $("playerStatus").textContent = text; }
+function esc(v){ return String(v ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[c])); }
+async function fetchJson(path, fallback){ try{ const r = await fetch(`${path}?t=${Date.now()}`, { cache:"no-store" }); if(!r.ok) throw new Error(r.status); return await r.json(); } catch(e){ return fallback; } }
+function makeSection(title, lines){ return { title, lines: lines.filter(Boolean) }; }
+function speechText(s){ return [s.title + ".", ...s.lines].join(". "); }
+function updateProgress(){ const pct = state.sections.length ? ((state.index + 1) / state.sections.length) * 100 : 0; $("progressBar").style.width = pct + "%"; $("briefCount").textContent = `${state.index + 1} of ${state.sections.length}`; }
+function renderCurrent(){ const s = state.sections[state.index]; if(!s) return; $("currentTitle").textContent = s.title; $("segmentText").textContent = s.lines.join("\n\n"); updateProgress(); }
+function pickVoice(){ const n = $("voiceSelect")?.value; if(n){ const v = state.voices.find(x => x.name === n); if(v) return v; } return state.voices.find(v => /female|jenny|aria|ava|samantha|zira|victoria|natural|neural/i.test(v.name)) || state.voices[0]; }
+
+function speak(){
+  if(!("speechSynthesis" in window)){ setStatus("Speech not supported."); return; }
+  speechSynthesis.cancel();
+  const s = state.sections[state.index];
+  if(!s){ setStatus("No brief loaded."); return; }
+  const u = new SpeechSynthesisUtterance(speechText(s));
+  u.rate = Number($("rateRange")?.value || 0.92);
+  u.pitch = Number($("pitchRange")?.value || 1.02);
+  const v = pickVoice(); if(v) u.voice = v;
+  u.onstart = () => { state.speaking = true; state.paused = false; $("playBtn").textContent = "PAUSE"; setStatus(`Playing ${s.title}`); };
+  u.onend = () => {
+    if(!state.speaking) return;
+    if(state.index < state.sections.length - 1){ state.index++; renderCurrent(); setTimeout(speak, 220); }
+    else { state.speaking = false; $("playBtn").textContent = "PLAY"; setStatus("Brief complete."); }
+  };
+  u.onerror = () => { state.speaking = false; $("playBtn").textContent = "PLAY"; setStatus("Audio stopped. Tap Play again."); };
+  speechSynthesis.speak(u);
+}
+function playPause(){
+  if(!state.sections.length){ setStatus("Refresh first."); return; }
+  if(state.speaking && !state.paused){ speechSynthesis.pause(); state.paused = true; $("playBtn").textContent = "PLAY"; setStatus("Paused."); return; }
+  if(state.speaking && state.paused){ speechSynthesis.resume(); state.paused = false; $("playBtn").textContent = "PAUSE"; setStatus("Playing."); return; }
+  speak();
+}
+function stop(){ if("speechSynthesis" in window) speechSynthesis.cancel(); state.speaking = false; state.paused = false; $("playBtn").textContent = "PLAY"; setStatus("Stopped."); }
+function prev(){ stop(); state.index = Math.max(0, state.index - 1); renderCurrent(); }
+function next(){ stop(); state.index = Math.min(state.sections.length - 1, state.index + 1); renderCurrent(); }
+
+function buildBrief(){
+  const jobs = state.data.jobs || [];
+  const news = state.data.news || [];
+  const sports = state.data.sports || [];
+  const date = new Date().toLocaleDateString(undefined, { weekday:"long", month:"long", day:"numeric" });
+  const actions = jobs.filter(x => (x.priority || "").toLowerCase() === "review" || Number(x.matchScore || 0) >= 75).slice(0, 4);
+
+  state.sections = [
+    makeSection("Morning Brief", [`Good morning David. This is your Vigil brief for ${date}.`, `You have ${actions.length} action items, ${jobs.length} job items, ${news.length} news items, and ${sports.length} sports items to review.`]),
+    makeSection("Priority Actions", actions.length ? actions.map(x => `${x.title}. ${x.action || x.summary}`) : ["No urgent action items today."]),
+    makeSection("Jobs Watch", jobs.map(x => `${x.title}. ${x.summary}. ${x.action || ""}`).slice(0, 6)),
+    makeSection("News Watch", news.map(x => `${x.category}. ${x.title}. ${x.summary}`).slice(0, 6)),
+    makeSection("Sports Watch", sports.map(x => `${x.title}. ${x.summary}`).slice(0, 4)),
+    makeSection("Closing", ["End of brief. Stay informed. Stay focused."])
+  ];
+  state.index = 0;
+  renderCurrent();
+  $("actionCount").textContent = actions.length;
+  $("jobCount").textContent = jobs.length;
+  $("newsCount").textContent = news.length;
+  $("sportsCount").textContent = sports.length;
+}
+function iconFor(kind){
+  if(kind.includes("job")) return "J";
+  if(kind.includes("news")) return "N";
+  if(kind.includes("sport")) return "S";
+  if(kind.includes("action")) return "!";
+  return "V";
+}
+function itemHtml(x, kind){
+  const title = x.title || x.category || "Item";
+  const summary = x.summary || "";
+  const meta = [x.category, x.priority, x.matchScore ? `Match ${x.matchScore}` : "", x.source].filter(Boolean).join(" · ");
+  const url = x.url || "#";
+  return `<article class="item" ${url !== "#" ? `data-url="${esc(url)}"` : ""}>
+    <div class="badge">${esc(iconFor(kind))}</div>
+    <div><h3>${esc(title)}</h3><p>${esc(summary)}</p>${meta ? `<small>${esc(meta)}</small>` : ""}</div>
+    <div class="chev">›</div>
+  </article>`;
+}
+function renderLists(){
+  const jobs = state.data.jobs || [], news = state.data.news || [], sports = state.data.sports || [];
+  const actions = jobs.filter(x => (x.priority || "").toLowerCase() === "review" || Number(x.matchScore || 0) >= 75);
+
+  $("actionsPreview").innerHTML = actions.slice(0, 2).map(x => itemHtml(x, "action")).join("") || `<div class="empty">No action items.</div>`;
+  $("jobsPreview").innerHTML = jobs.slice(0, 2).map(x => itemHtml(x, "job")).join("") || `<div class="empty">No job items.</div>`;
+  $("newsPreview").innerHTML = news.slice(0, 2).map(x => itemHtml(x, "news")).join("") || `<div class="empty">No news items.</div>`;
+
+  $("actionsList").innerHTML = actions.map(x => itemHtml(x, "action")).join("") || `<div class="empty">No action items.</div>`;
+  $("jobsList").innerHTML = jobs.map(x => itemHtml(x, "job")).join("") || `<div class="empty">No job items.</div>`;
+  $("newsList").innerHTML = news.map(x => itemHtml(x, "news")).join("") || `<div class="empty">No news items.</div>`;
+  $("sportsList").innerHTML = sports.map(x => itemHtml(x, "sports")).join("") || `<div class="empty">No sports items.</div>`;
+
+  document.querySelectorAll(".item[data-url]").forEach(el => el.addEventListener("click", () => window.open(el.dataset.url, "_blank", "noopener")));
+}
+async function refresh(){
+  setStatus("Loading brief…");
+  const [jobs, news, sports, updated] = await Promise.all([
+    fetchJson("./jobs.json", []),
+    fetchJson("./news.json", []),
+    fetchJson("./sports.json", []),
+    fetchJson("./last-updated.json", {})
+  ]);
+  state.data = { jobs, news, sports };
+  const label = updated?.updated ? new Date(updated.updated).toLocaleString() : new Date().toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
+  $("updatedLabel").textContent = "Updated " + label;
+  $("dateLabel").textContent = new Date().toLocaleDateString(undefined, { weekday:"long", month:"short", day:"numeric" });
+  buildBrief();
+  renderLists();
+  setStatus("Ready to play.");
+}
+function showScreen(id){ document.querySelectorAll(".screen").forEach(s => s.classList.remove("active")); const el = $(id); if(el) el.classList.add("active"); window.scrollTo({ top:0 }); }
+function hideScreens(){ document.querySelectorAll(".screen").forEach(s => s.classList.remove("active")); }
+function loadVoices(){
+  if(!("speechSynthesis" in window)) return;
+  state.voices = speechSynthesis.getVoices() || [];
+  const select = $("voiceSelect");
+  if(!select) return;
+  const current = select.value;
+  select.innerHTML = "";
+  state.voices.forEach(v => {
+    const o = document.createElement("option");
+    o.value = v.name;
+    o.textContent = `${v.name} (${v.lang})`;
+    select.appendChild(o);
+  });
+  if(current) select.value = current;
+}
+function init(){
+  loadVoices();
+  if("speechSynthesis" in window) speechSynthesis.onvoiceschanged = loadVoices;
+  $("playBtn").addEventListener("click", playPause);
+  $("prevBtn").addEventListener("click", prev);
+  $("nextBtn").addEventListener("click", next);
+  $("stopBtn").addEventListener("click", stop);
+  $("refreshBtn").addEventListener("click", refresh);
+  document.querySelectorAll("[data-screen]").forEach(b => b.addEventListener("click", () => showScreen(b.dataset.screen)));
+  document.querySelectorAll(".back").forEach(b => b.addEventListener("click", hideScreens));
+  $("testVoiceBtn").addEventListener("click", () => {
+    state.sections = [makeSection("Voice Test", ["This is Vigil. The voice test is working."])];
+    state.index = 0; renderCurrent(); speak();
+  });
+  refresh();
+}
+document.addEventListener("DOMContentLoaded", init);

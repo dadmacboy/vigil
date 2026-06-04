@@ -1,0 +1,18 @@
+[
+  {
+    "category": "Catholic Watch",
+    "title": "Vatican News",
+    "summary": "Catholic Watch is ready. The updater will pull current headlines when GitHub Actions runs.",
+    "url": "https://www.vaticannews.va/en.html",
+    "priority": "Monitor",
+    "source": "Vatican News"
+  },
+  {
+    "category": "Contract Watch",
+    "title": "SANCORP / ISN Contract Watch",
+    "summary": "Contract Watch is ready. The updater will pull public search headlines when GitHub Actions runs.",
+    "url": "https://news.google.com/search?q=SANCORP%20ISN%20USMC%20Okinawa",
+    "priority": "Monitor",
+    "source": "Google News"
+  }
+]

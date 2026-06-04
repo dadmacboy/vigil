@@ -1,0 +1,16 @@
+[
+  {
+    "category": "Sports",
+    "title": "NBA Games and Scores",
+    "summary": "Sports Watch is ready. The updater will pull NBA scoreboard items when GitHub Actions runs.",
+    "url": "https://www.nba.com/games",
+    "priority": "Optional"
+  },
+  {
+    "category": "Sports",
+    "title": "Japan B.LEAGUE Schedule",
+    "summary": "Open the official Japan B.LEAGUE schedule.",
+    "url": "https://www.bleague.jp/en/schedule/",
+    "priority": "Optional"
+  }
+]
